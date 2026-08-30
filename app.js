@@ -348,12 +348,15 @@ async function cargarEstados() {
     porUsuario.get(h.usuario_id).push(h);
   });
 
+  const misHistorias = porUsuario.get(usuarioActual.id) || [];
+  const tengoEstado = misHistorias.length > 0;
+
   const cont = document.getElementById('estados-bar');
   let html = `
     <div class="estado-item" id="estado-agregar">
-      <div class="estado-avatar visto">
+      <div class="estado-avatar ${tengoEstado ? '' : 'visto'}">
         ${avatarHtml(miPerfil?.nombre, miPerfil?.avatar_url, false)}
-        <span class="estado-plus">+</span>
+        <span class="estado-plus" id="estado-plus-btn">+</span>
       </div>
       <span>Tu estado</span>
     </div>
@@ -372,10 +375,20 @@ async function cargarEstados() {
   });
 
   cont.innerHTML = html;
-  document.getElementById('estado-agregar').addEventListener('click', () => {
+
+  function abrirPublicar() {
     document.getElementById('estado-texto').value = '';
     document.getElementById('input-estado-imagen').value = '';
     document.getElementById('modal-estado-bg').classList.add('show');
+  }
+
+  document.getElementById('estado-agregar').addEventListener('click', () => {
+    if (tengoEstado) verEstados(misHistorias);
+    else abrirPublicar();
+  });
+  document.getElementById('estado-plus-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    abrirPublicar();
   });
   cont.querySelectorAll('.estado-item[data-usuario]').forEach(el => {
     el.addEventListener('click', () => verEstados(porUsuario.get(el.dataset.usuario)));
