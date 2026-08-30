@@ -1,17 +1,23 @@
 // ============================================================
-// ONDA — Lógica de la app de mensajería
+// Chat Esteban — Lógica de la app de mensajería
 // ============================================================
 
 let usuarioActual = null;
+let miPerfil = null;
 let conversaciones = [];
 let conversacionActivaId = null;
 let participantesActivos = [];
 let canalMensajes = null;
+let canalReacciones = null;
 let modoModal = 'chat'; // 'chat' o 'grupo'
 let seleccionGrupo = new Map();
 let grabando = false;
 let mediaRecorder = null;
 let chunksAudio = [];
+let prefsChat = new Map();   // conversacion_id -> {apodo, color_tema, fondo}
+let autodestruyeActivo = false;
+let avatarFileSeleccionado = null;
+const EMOJIS_REACCION = ['👍','❤️','😂','😮','😢','🙏'];
 
 const BUCKET = 'media';
 
@@ -23,8 +29,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   await marcarComoConectado();
   setInterval(marcarComoConectado, 25000); // late para mantenerse "en línea"
 
+  aplicarTemaGuardado();
+  pedirPermisoNotificaciones();
+
   await mostrarMiCodigo();
+  await cargarPrefsChats();
   await cargarConversaciones();
+  await cargarEstados();
   suscribirseAConversaciones();
 
   document.getElementById('btn-logout').addEventListener('click', cerrarSesion);
@@ -42,6 +53,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('input-imagen').addEventListener('change', enviarImagen);
   document.getElementById('btn-audio').addEventListener('click', toggleGrabacion);
   document.getElementById('buscar-conv').addEventListener('input', filtrarListaConv);
+
+  document.getElementById('btn-tema').addEventListener('click', toggleTema);
+  document.getElementById('btn-ubicacion').addEventListener('click', enviarUbicacion);
+  document.getElementById('btn-fuego').addEventListener('click', toggleFuego);
+
+  document.getElementById('btn-perfil').addEventListener('click', abrirModalPerfil);
+  document.getElementById('btn-cerrar-modal-perfil').addEventListener('click', () => document.getElementById('modal-perfil-bg').classList.remove('show'));
+  document.getElementById('btn-cambiar-avatar').addEventListener('click', () => document.getElementById('input-avatar').click());
+  document.getElementById('input-avatar').addEventListener('change', previsualizarAvatar);
+  document.getElementById('btn-guardar-perfil').addEventListener('click', guardarPerfil);
+
+  document.getElementById('modal-estado-bg').addEventListener('click', (e) => { if (e.target.id === 'modal-estado-bg') e.target.classList.remove('show'); });
+  document.getElementById('btn-publicar-estado').addEventListener('click', publicarEstado);
+  document.getElementById('estado-viewer-close').addEventListener('click', () => document.getElementById('estado-viewer').classList.remove('show'));
+
+  document.getElementById('btn-opciones-chat').addEventListener('click', abrirOpcionesChat);
+  document.getElementById('modal-opciones-bg').addEventListener('click', (e) => { if (e.target.id === 'modal-opciones-bg') e.target.classList.remove('show'); });
+  document.getElementById('btn-cerrar-modal-opciones').addEventListener('click', () => document.getElementById('modal-opciones-bg').classList.remove('show'));
+  document.getElementById('btn-guardar-opciones').addEventListener('click', guardarOpcionesChat);
+  document.getElementById('btn-salir-grupo').addEventListener('click', salirDelGrupo);
 });
 
 async function cerrarSesion() {
@@ -54,13 +85,84 @@ async function marcarComoConectado() {
 }
 
 async function mostrarMiCodigo() {
-  const { data } = await supabaseClient.from('perfiles').select('codigo').eq('id', usuarioActual.id).maybeSingle();
+  const { data } = await supabaseClient.from('perfiles').select('*').eq('id', usuarioActual.id).maybeSingle();
+  miPerfil = data;
   if (data?.codigo) document.getElementById('mi-codigo').textContent = data.codigo;
+}
+
+// ---------- Modo oscuro ----------
+function aplicarTemaGuardado() {
+  if (localStorage.getItem('tema') === 'oscuro') {
+    document.body.classList.add('dark');
+    document.getElementById('btn-tema').textContent = '☀️';
+  }
+}
+
+function toggleTema() {
+  const oscuro = document.body.classList.toggle('dark');
+  document.getElementById('btn-tema').textContent = oscuro ? '☀️' : '🌙';
+  localStorage.setItem('tema', oscuro ? 'oscuro' : 'claro');
+}
+
+// ---------- Notificaciones (mientras la pestaña esté abierta) ----------
+function pedirPermisoNotificaciones() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function notificar(titulo, cuerpo) {
+  if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+    new Notification(titulo, { body: cuerpo });
+  }
+}
+
+// ---------- Perfil (avatar y nombre) ----------
+function abrirModalPerfil() {
+  document.getElementById('perfil-nombre').value = miPerfil?.nombre || '';
+  const preview = document.getElementById('perfil-avatar-preview');
+  if (miPerfil?.avatar_url) preview.innerHTML = `<img src="${miPerfil.avatar_url}">`;
+  else { preview.textContent = inicial(miPerfil?.nombre); preview.innerHTML = inicial(miPerfil?.nombre); }
+  avatarFileSeleccionado = null;
+  document.getElementById('modal-perfil-bg').classList.add('show');
+}
+
+function previsualizarAvatar(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  avatarFileSeleccionado = file;
+  const preview = document.getElementById('perfil-avatar-preview');
+  preview.innerHTML = `<img src="${URL.createObjectURL(file)}">`;
+}
+
+async function guardarPerfil() {
+  const nombre = document.getElementById('perfil-nombre').value.trim();
+  const updates = { nombre };
+
+  if (avatarFileSeleccionado) {
+    const ruta = `avatars/${usuarioActual.id}_${Date.now()}_${avatarFileSeleccionado.name}`;
+    const { error: errSubida } = await supabaseClient.storage.from(BUCKET).upload(ruta, avatarFileSeleccionado);
+    if (!errSubida) {
+      const { data: urlData } = supabaseClient.storage.from(BUCKET).getPublicUrl(ruta);
+      updates.avatar_url = urlData.publicUrl;
+    }
+  }
+
+  await supabaseClient.from('perfiles').update(updates).eq('id', usuarioActual.id);
+  miPerfil = { ...miPerfil, ...updates };
+  document.getElementById('modal-perfil-bg').classList.remove('show');
+  await cargarConversaciones();
 }
 
 function esReciente(lastSeen) {
   if (!lastSeen) return false;
   return (Date.now() - new Date(lastSeen).getTime()) < 60000;
+}
+
+// ---------- Personalización por chat (apodo, color, fondo) ----------
+async function cargarPrefsChats() {
+  const { data } = await supabaseClient.from('conversacion_prefs').select('*').eq('usuario_id', usuarioActual.id);
+  prefsChat = new Map((data || []).map(p => [p.conversacion_id, p]));
 }
 
 // ============================================================
@@ -82,7 +184,7 @@ async function cargarConversaciones() {
     const conv = p.conversaciones;
     const { data: otros } = await supabaseClient
       .from('participantes')
-      .select('usuario_id, perfiles(id, nombre, last_seen)')
+      .select('usuario_id, perfiles(id, nombre, last_seen, avatar_url)')
       .eq('conversacion_id', conv.id)
       .neq('usuario_id', usuarioActual.id);
 
@@ -119,12 +221,19 @@ async function cargarConversaciones() {
 }
 
 function nombreConversacion(conv) {
+  const apodo = prefsChat.get(conv.id)?.apodo;
+  if (apodo) return apodo;
   if (conv.tipo === 'grupo') return conv.nombre || 'Grupo';
   return conv.otrosParticipantes[0]?.nombre || 'Usuario';
 }
 
 function inicial(nombre) {
   return (nombre || '?').trim().charAt(0).toUpperCase();
+}
+
+function avatarHtml(nombre, avatarUrl, esGrupo) {
+  if (avatarUrl) return `<div class="avatar ${esGrupo ? 'group' : ''}"><img src="${avatarUrl}"></div>`;
+  return `<div class="avatar ${esGrupo ? 'group' : ''}">${inicial(nombre)}</div>`;
 }
 
 function dibujarListaConv() {
@@ -436,19 +545,16 @@ async function confirmarModal() {
   if (!nombreGrupo) { mostrarErrorCodigo('Ponle un nombre al grupo.'); return; }
   if (seleccionGrupo.size === 0) { mostrarErrorCodigo('Agrega al menos una persona por su código.'); return; }
 
-  const { data: conv, error } = await supabaseClient.from('conversaciones').insert({
-    tipo: 'grupo', nombre: nombreGrupo
-  }).select().single();
+  const { data: nuevaId, error } = await supabaseClient.rpc('crear_conversacion', {
+    p_tipo: 'grupo',
+    p_nombre: nombreGrupo,
+    p_participantes: [...seleccionGrupo.keys()]
+  });
   if (error) { mostrarErrorCodigo('No se pudo crear el grupo.'); return; }
-
-  const participantes = [usuarioActual.id, ...seleccionGrupo.keys()].map(uid => ({
-    conversacion_id: conv.id, usuario_id: uid
-  }));
-  await supabaseClient.from('participantes').insert(participantes);
 
   cerrarModal();
   await cargarConversaciones();
-  await abrirConversacion(conv.id);
+  await abrirConversacion(nuevaId);
 }
 
 async function crearChatIndividual(otroId) {
@@ -462,16 +568,13 @@ async function crearChatIndividual(otroId) {
     return;
   }
 
-  const { data: conv, error } = await supabaseClient.from('conversaciones').insert({
-    tipo: 'individual'
-  }).select().single();
+  const { data: nuevaId, error } = await supabaseClient.rpc('crear_conversacion', {
+    p_tipo: 'individual',
+    p_nombre: null,
+    p_participantes: [otroId]
+  });
   if (error) { alert('No se pudo crear el chat.'); return; }
 
-  await supabaseClient.from('participantes').insert([
-    { conversacion_id: conv.id, usuario_id: usuarioActual.id },
-    { conversacion_id: conv.id, usuario_id: otroId }
-  ]);
-
   await cargarConversaciones();
-  await abrirConversacion(conv.id);
+  await abrirConversacion(nuevaId);
 }
