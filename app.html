@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONDA — Chats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand"><div class="onda-mark"><span></span><span></span><span></span><span></span><span></span></div>ONDA</div>
+      <div style="display:flex;gap:6px">
+        <button class="icon-btn" id="btn-nuevo-chat" title="Nuevo chat">💬</button>
+        <button class="icon-btn" id="btn-nuevo-grupo" title="Nuevo grupo">👥</button>
+        <button class="icon-btn" id="btn-logout" title="Cerrar sesión">⏻</button>
+      </div>
+    </div>
+    <div style="padding:8px 20px;font-size:0.8rem;color:var(--ink-dim);border-bottom:1px solid var(--line)">
+      Tu código: <span id="mi-codigo" style="font-family:var(--font-mono);font-weight:700;color:var(--coral)">--</span>
+      <span style="color:var(--ink-faint)"> · compártelo para que te agreguen</span>
+    </div>
+    <div class="search-box">
+      <input type="text" id="buscar-conv" placeholder="Buscar conversación...">
+    </div>
+    <div class="conv-list" id="conv-list">
+      <div class="empty-state"><p>Cargando tus chats...</p></div>
+    </div>
+  </aside>
+
+  <!-- ===== CHAT PANE ===== -->
+  <main class="chat-pane" id="chat-pane">
+    <div class="empty-state" id="chat-empty">
+      <div class="onda-mark" style="height:36px"><span></span><span></span><span></span><span></span><span></span></div>
+      <p>Elige un chat o empieza uno nuevo</p>
+    </div>
+
+    <div id="chat-activo" style="display:none;flex-direction:column;height:100%">
+      <div class="chat-head">
+        <button class="back-btn" id="btn-back">←</button>
+        <div class="avatar" id="chat-avatar">?</div>
+        <div class="chat-head-info">
+          <div class="chat-head-name" id="chat-nombre">—</div>
+          <div class="chat-head-status" id="chat-status"></div>
+        </div>
+      </div>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="composer">
+        <input type="file" id="input-imagen" accept="image/*">
+        <button class="icon-btn" id="btn-adjuntar" title="Enviar imagen">📷</button>
+        <input type="text" id="texto-mensaje" placeholder="Escribe un mensaje...">
+        <button class="icon-btn" id="btn-audio" title="Grabar audio">🎤</button>
+        <button class="send-btn" id="btn-enviar" title="Enviar">➤</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== MODAL: nuevo chat / nuevo grupo ===== -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <h3 id="modal-titulo">Nuevo chat</h3>
+    <input type="text" id="modal-nombre-grupo" placeholder="Nombre del grupo" style="display:none;width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);margin-bottom:10px;background:var(--bg-sunken)">
+
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <input type="text" id="modal-codigo" placeholder="Código de 2 dígitos" maxlength="2" inputmode="numeric"
+        style="flex:1;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg-sunken);font-family:var(--font-mono);letter-spacing:0.1em">
+      <button class="btn btn-primary" id="btn-buscar-codigo" style="width:auto;padding:10px 16px">Buscar</button>
+    </div>
+    <p id="codigo-error" style="color:#C43E1F;font-size:0.82rem;display:none;margin-bottom:8px"></p>
+
+    <div class="modal-list" id="modal-list"></div>
+    <button class="btn btn-primary" id="modal-confirmar" style="display:none">Crear grupo</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
