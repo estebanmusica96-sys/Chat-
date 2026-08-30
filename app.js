@@ -182,11 +182,21 @@ async function cargarConversaciones() {
   conversaciones = [];
   for (const p of partis) {
     const conv = p.conversaciones;
-    const { data: otros } = await supabaseClient
+    const { data: otrosPartis } = await supabaseClient
       .from('participantes')
-      .select('usuario_id, perfiles(id, nombre, last_seen, avatar_url)')
+      .select('usuario_id')
       .eq('conversacion_id', conv.id)
       .neq('usuario_id', usuarioActual.id);
+
+    const otrosIds = (otrosPartis || []).map(o => o.usuario_id);
+    let otrosPerfiles = [];
+    if (otrosIds.length > 0) {
+      const { data } = await supabaseClient
+        .from('perfiles')
+        .select('id, nombre, last_seen, avatar_url')
+        .in('id', otrosIds);
+      otrosPerfiles = data || [];
+    }
 
     const { data: ultimoMsg } = await supabaseClient
       .from('mensajes')
@@ -205,7 +215,7 @@ async function cargarConversaciones() {
 
     conversaciones.push({
       ...conv,
-      otrosParticipantes: (otros || []).map(o => o.perfiles),
+      otrosParticipantes: otrosPerfiles,
       ultimoMsg,
       noLeidos: noLeidos || 0
     });
@@ -338,12 +348,22 @@ async function cargarEstados() {
   const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { data } = await supabaseClient
     .from('historias')
-    .select('*, perfiles(nombre, avatar_url)')
+    .select('*')
     .gt('creado_en', desde)
     .order('creado_en', { ascending: false });
 
+  const historias = data || [];
+  const idsUnicos = [...new Set(historias.map(h => h.usuario_id))];
+  let perfilesPorId = {};
+  if (idsUnicos.length > 0) {
+    const { data: perfilesData } = await supabaseClient
+      .from('perfiles').select('id, nombre, avatar_url').in('id', idsUnicos);
+    (perfilesData || []).forEach(p => { perfilesPorId[p.id] = p; });
+  }
+
   const porUsuario = new Map();
-  (data || []).forEach(h => {
+  historias.forEach(h => {
+    h.perfiles = perfilesPorId[h.usuario_id] || null;
     if (!porUsuario.has(h.usuario_id)) porUsuario.set(h.usuario_id, []);
     porUsuario.get(h.usuario_id).push(h);
   });
@@ -448,10 +468,22 @@ function verEstados(historias) {
 async function cargarMensajes(convId) {
   const { data } = await supabaseClient
     .from('mensajes')
-    .select('*, perfiles(nombre), reacciones(usuario_id, emoji)')
+    .select('*, reacciones(usuario_id, emoji)')
     .eq('conversacion_id', convId)
     .order('creado_en', { ascending: true })
     .limit(200);
+
+  const mensajes = data || [];
+
+  // Nombres de quien envió cada mensaje (para mostrarlos en grupos)
+  const idsUnicos = [...new Set(mensajes.map(m => m.usuario_id))];
+  let nombresPorId = {};
+  if (idsUnicos.length > 0) {
+    const { data: perfilesEnviaron } = await supabaseClient
+      .from('perfiles').select('id, nombre').in('id', idsUnicos);
+    (perfilesEnviaron || []).forEach(p => { nombresPorId[p.id] = p.nombre; });
+  }
+  mensajes.forEach(m => { m.nombreRemitente = nombresPorId[m.usuario_id] || 'Usuario'; });
 
   let otroLeidoHasta = null;
   const conv = conversaciones.find(c => c.id === convId);
@@ -462,7 +494,7 @@ async function cargarMensajes(convId) {
     otroLeidoHasta = p?.leido_hasta || null;
   }
 
-  dibujarMensajes(data || [], otroLeidoHasta);
+  dibujarMensajes(mensajes, otroLeidoHasta);
 }
 
 function dibujarMensajes(mensajes, otroLeidoHasta) {
@@ -499,7 +531,7 @@ function dibujarMensajes(mensajes, otroLeidoHasta) {
     return `
       <div class="msg-row ${mio ? 'mine' : ''}" data-id="${m.id}" data-autodestruye="${m.autodestruye ? '1' : '0'}" data-mio="${mio ? '1' : '0'}">
         <div class="bubble-wrap">
-          ${esGrupo && !mio ? `<div class="msg-sender">${m.perfiles?.nombre || 'Usuario'}</div>` : ''}
+          ${esGrupo && !mio ? `<div class="msg-sender">${m.nombreRemitente}</div>` : ''}
           <div class="reaccion-picker">${EMOJIS_REACCION.map(e => `<span data-emoji="${e}" data-msg="${m.id}">${e}</span>`).join('')}</div>
           ${mio ? `<div class="msg-borrar" data-borrar="${m.id}">✕</div>` : ''}
           <div class="bubble">${marcaFuego}${cuerpo}<div class="bubble-time">${checks}${hora}</div></div>
