@@ -17,6 +17,8 @@
     <div class="sidebar-head">
       <div class="brand"><div class="onda-mark"><span></span><span></span><span></span><span></span><span></span></div>Chat Esteban</div>
       <div style="display:flex;gap:6px">
+        <button class="icon-btn" id="btn-perfil" title="Mi perfil">🙂</button>
+        <button class="icon-btn" id="btn-tema" title="Modo oscuro">🌙</button>
         <button class="icon-btn" id="btn-nuevo-chat" title="Nuevo chat">💬</button>
         <button class="icon-btn" id="btn-nuevo-grupo" title="Nuevo grupo">👥</button>
         <button class="icon-btn" id="btn-logout" title="Cerrar sesión">⏻</button>
@@ -26,6 +28,7 @@
       Tu código: <span id="mi-codigo" style="font-family:var(--font-mono);font-weight:700;color:var(--coral)">--</span>
       <span style="color:var(--ink-faint)"> · compártelo para que te agreguen</span>
     </div>
+    <div class="estados-bar" id="estados-bar"></div>
     <div class="search-box">
       <input type="text" id="buscar-conv" placeholder="Buscar conversación...">
     </div>
@@ -49,6 +52,7 @@
           <div class="chat-head-name" id="chat-nombre">—</div>
           <div class="chat-head-status" id="chat-status"></div>
         </div>
+        <button class="icon-btn" id="btn-opciones-chat" title="Opciones del chat">⚙️</button>
       </div>
 
       <div class="messages" id="messages"></div>
@@ -56,7 +60,9 @@
       <div class="composer">
         <input type="file" id="input-imagen" accept="image/*">
         <button class="icon-btn" id="btn-adjuntar" title="Enviar imagen">📷</button>
+        <button class="icon-btn" id="btn-ubicacion" title="Compartir ubicación">📍</button>
         <input type="text" id="texto-mensaje" placeholder="Escribe un mensaje...">
+        <button class="icon-btn btn-fuego" id="btn-fuego" title="Mensaje que se autodestruye">🔥</button>
         <button class="icon-btn" id="btn-audio" title="Grabar audio">🎤</button>
         <button class="send-btn" id="btn-enviar" title="Enviar">➤</button>
       </div>
@@ -79,6 +85,86 @@
 
     <div class="modal-list" id="modal-list"></div>
     <button class="btn btn-primary" id="modal-confirmar" style="display:none">Crear grupo</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: mi perfil ===== -->
+<div class="modal-bg" id="modal-perfil-bg">
+  <div class="modal">
+    <h3>Mi perfil</h3>
+    <div class="avatar-upload">
+      <div class="avatar" id="perfil-avatar-preview">?</div>
+      <div>
+        <input type="file" id="input-avatar" accept="image/*" style="display:none">
+        <button class="btn btn-ghost" id="btn-cambiar-avatar" style="width:auto;padding:8px 14px;border:1px solid var(--line);border-radius:8px">Cambiar foto</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Tu nombre</label>
+      <input type="text" id="perfil-nombre">
+    </div>
+    <button class="btn btn-primary" id="btn-guardar-perfil">Guardar</button>
+    <p class="danger-link" id="btn-cerrar-modal-perfil" style="text-align:center;width:100%">Cerrar</p>
+  </div>
+</div>
+
+<!-- ===== MODAL: crear estado ===== -->
+<div class="modal-bg" id="modal-estado-bg">
+  <div class="modal">
+    <h3>Nuevo estado</h3>
+    <div class="field">
+      <label>Texto (se borra solo en 24 horas)</label>
+      <input type="text" id="estado-texto" placeholder="¿Qué estás pensando?">
+    </div>
+    <p style="text-align:center;color:var(--ink-faint);font-size:0.82rem;margin-bottom:10px">o</p>
+    <input type="file" id="input-estado-imagen" accept="image/*" style="margin-bottom:14px">
+    <button class="btn btn-primary" id="btn-publicar-estado">Publicar</button>
+  </div>
+</div>
+
+<!-- ===== VISOR DE ESTADOS ===== -->
+<div class="estado-viewer" id="estado-viewer">
+  <div class="estado-viewer-bar"><div class="estado-viewer-bar-fill" id="estado-viewer-fill"></div></div>
+  <div class="estado-viewer-nombre" id="estado-viewer-nombre"></div>
+  <div class="estado-viewer-close" id="estado-viewer-close">✕</div>
+  <div class="estado-viewer-content" id="estado-viewer-content"></div>
+</div>
+
+<!-- ===== MODAL: opciones del chat (personalización) ===== -->
+<div class="modal-bg" id="modal-opciones-bg">
+  <div class="modal">
+    <h3>Opciones del chat</h3>
+    <div class="opciones-row" id="row-renombrar" style="display:none">
+      <label>Nombre del grupo</label>
+      <input type="text" id="opciones-nombre-grupo" style="width:160px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg-sunken)">
+    </div>
+    <div class="opciones-row">
+      <label>Apodo (solo lo ves tú)</label>
+      <input type="text" id="opciones-apodo" style="width:160px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg-sunken)">
+    </div>
+    <div class="opciones-row">
+      <label>Color del chat</label>
+      <div class="color-swatches" id="opciones-colores">
+        <div class="color-swatch" data-color="#FF6B4A" style="background:#FF6B4A"></div>
+        <div class="color-swatch" data-color="#4C3F91" style="background:#4C3F91"></div>
+        <div class="color-swatch" data-color="#2FBF71" style="background:#2FBF71"></div>
+        <div class="color-swatch" data-color="#E0A62B" style="background:#E0A62B"></div>
+        <div class="color-swatch" data-color="#C43E1F" style="background:#C43E1F"></div>
+      </div>
+    </div>
+    <div class="opciones-row">
+      <label>Fondo de la conversación</label>
+      <div class="color-swatches" id="opciones-fondos">
+        <div class="color-swatch" data-fondo="#EDE8E0" style="background:#EDE8E0;border:1px solid var(--line)"></div>
+        <div class="color-swatch" data-fondo="#FFE8E0" style="background:#FFE8E0"></div>
+        <div class="color-swatch" data-fondo="#E4E1F7" style="background:#E4E1F7"></div>
+        <div class="color-swatch" data-fondo="#DFF3E6" style="background:#DFF3E6"></div>
+        <div class="color-swatch" data-fondo="#1E1B29" style="background:#1E1B29"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btn-guardar-opciones" style="margin-top:10px">Guardar</button>
+    <p class="danger-link" id="btn-salir-grupo" style="display:none;text-align:center;width:100%">Salir del grupo</p>
+    <p class="danger-link" id="btn-cerrar-modal-opciones" style="text-align:center;width:100%">Cerrar</p>
   </div>
 </div>
 

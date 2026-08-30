@@ -312,6 +312,11 @@ async function abrirConversacion(id) {
   await marcarLeido(id);
   await cargarMensajes(id);
   dibujarListaConv();
+
+  const prefs = prefsChat.get(id) || {};
+  const chatPane = document.getElementById('chat-pane');
+  chatPane.style.setProperty('--coral', prefs.color_tema || '');
+  document.getElementById('messages').style.background = prefs.fondo || '';
 }
 
 function volverALista() {
@@ -327,20 +332,127 @@ async function marcarLeido(convId) {
 }
 
 // ============================================================
+// ESTADOS / HISTORIAS (desaparecen solas a las 24 horas)
+// ============================================================
+async function cargarEstados() {
+  const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const { data } = await supabaseClient
+    .from('historias')
+    .select('*, perfiles(nombre, avatar_url)')
+    .gt('creado_en', desde)
+    .order('creado_en', { ascending: false });
+
+  const porUsuario = new Map();
+  (data || []).forEach(h => {
+    if (!porUsuario.has(h.usuario_id)) porUsuario.set(h.usuario_id, []);
+    porUsuario.get(h.usuario_id).push(h);
+  });
+
+  const cont = document.getElementById('estados-bar');
+  let html = `
+    <div class="estado-item" id="estado-agregar">
+      <div class="estado-avatar visto">
+        ${avatarHtml(miPerfil?.nombre, miPerfil?.avatar_url, false)}
+        <span class="estado-plus">+</span>
+      </div>
+      <span>Tu estado</span>
+    </div>
+  `;
+
+  porUsuario.forEach((historias, uid) => {
+    if (uid === usuarioActual.id) return; // el propio ya se muestra arriba
+    const nombre = historias[0].perfiles?.nombre || 'Usuario';
+    const avatar = historias[0].perfiles?.avatar_url;
+    html += `
+      <div class="estado-item" data-usuario="${uid}">
+        <div class="estado-avatar">${avatarHtml(nombre, avatar, false)}</div>
+        <span>${nombre}</span>
+      </div>
+    `;
+  });
+
+  cont.innerHTML = html;
+  document.getElementById('estado-agregar').addEventListener('click', () => {
+    document.getElementById('estado-texto').value = '';
+    document.getElementById('input-estado-imagen').value = '';
+    document.getElementById('modal-estado-bg').classList.add('show');
+  });
+  cont.querySelectorAll('.estado-item[data-usuario]').forEach(el => {
+    el.addEventListener('click', () => verEstados(porUsuario.get(el.dataset.usuario)));
+  });
+}
+
+async function publicarEstado() {
+  const texto = document.getElementById('estado-texto').value.trim();
+  const file = document.getElementById('input-estado-imagen').files[0];
+
+  if (file) {
+    const ruta = `estados/${usuarioActual.id}_${Date.now()}_${file.name}`;
+    const { error } = await supabaseClient.storage.from(BUCKET).upload(ruta, file);
+    if (error) { alert('No se pudo subir la imagen.'); return; }
+    const { data: urlData } = supabaseClient.storage.from(BUCKET).getPublicUrl(ruta);
+    await supabaseClient.from('historias').insert({ usuario_id: usuarioActual.id, tipo: 'imagen', contenido: urlData.publicUrl });
+  } else if (texto) {
+    await supabaseClient.from('historias').insert({ usuario_id: usuarioActual.id, tipo: 'texto', contenido: texto });
+  } else {
+    return;
+  }
+
+  document.getElementById('modal-estado-bg').classList.remove('show');
+  await cargarEstados();
+}
+
+function verEstados(historias) {
+  let i = 0;
+  const viewer = document.getElementById('estado-viewer');
+  const fill = document.getElementById('estado-viewer-fill');
+  const nombre = document.getElementById('estado-viewer-nombre');
+  const contenido = document.getElementById('estado-viewer-content');
+
+  function mostrar() {
+    const h = historias[i];
+    nombre.textContent = h.perfiles?.nombre || 'Usuario';
+    contenido.innerHTML = h.tipo === 'imagen' ? `<img src="${h.contenido}">` : `<div>${escapeHtml(h.contenido)}</div>`;
+    fill.style.animation = 'none';
+    void fill.offsetWidth;
+    fill.style.animation = 'estadoProgreso 5s linear forwards';
+  }
+
+  viewer.classList.add('show');
+  mostrar();
+
+  fill.onanimationend = () => {
+    i++;
+    if (i >= historias.length) { viewer.classList.remove('show'); return; }
+    mostrar();
+  };
+  document.getElementById('estado-viewer-close').onclick = () => viewer.classList.remove('show');
+}
+
+// ============================================================
 // MENSAJES
 // ============================================================
 async function cargarMensajes(convId) {
   const { data } = await supabaseClient
     .from('mensajes')
-    .select('*, perfiles(nombre)')
+    .select('*, perfiles(nombre), reacciones(usuario_id, emoji)')
     .eq('conversacion_id', convId)
     .order('creado_en', { ascending: true })
     .limit(200);
 
-  dibujarMensajes(data || []);
+  let otroLeidoHasta = null;
+  const conv = conversaciones.find(c => c.id === convId);
+  if (conv && conv.tipo === 'individual') {
+    const { data: p } = await supabaseClient
+      .from('participantes').select('leido_hasta')
+      .eq('conversacion_id', convId).neq('usuario_id', usuarioActual.id).maybeSingle();
+    otroLeidoHasta = p?.leido_hasta || null;
+  }
+
+  dibujarMensajes(data || [], otroLeidoHasta);
 }
 
-function dibujarMensajes(mensajes) {
+function dibujarMensajes(mensajes, otroLeidoHasta) {
   const cont = document.getElementById('messages');
   const conv = conversaciones.find(c => c.id === conversacionActivaId);
   const esGrupo = conv?.tipo === 'grupo';
@@ -352,18 +464,55 @@ function dibujarMensajes(mensajes) {
     if (m.tipo === 'texto') cuerpo = `<div>${escapeHtml(m.contenido)}</div>`;
     else if (m.tipo === 'imagen') cuerpo = `<img src="${m.contenido}" alt="imagen">`;
     else if (m.tipo === 'audio') cuerpo = `<audio controls src="${m.contenido}"></audio>`;
+    else if (m.tipo === 'ubicacion') {
+      const [lat, lng] = m.contenido.split(',');
+      cuerpo = `<a class="bubble-ubicacion" href="https://maps.google.com/?q=${lat},${lng}" target="_blank"><span class="icono">📍</span> Ver ubicación</a>`;
+    }
+
+    let checks = '';
+    if (mio && !esGrupo) {
+      const leido = otroLeidoHasta && new Date(otroLeidoHasta) >= new Date(m.creado_en);
+      checks = `<span class="check-doble ${leido ? 'leido' : ''}">${leido ? '✓✓' : '✓'}</span> `;
+    }
+
+    const reaccionesPorEmoji = {};
+    (m.reacciones || []).forEach(r => { reaccionesPorEmoji[r.emoji] = (reaccionesPorEmoji[r.emoji] || 0) + 1; });
+    const reaccionesHtml = Object.keys(reaccionesPorEmoji).length
+      ? `<div class="reacciones-lista">${Object.entries(reaccionesPorEmoji).map(([e, n]) => `<span class="reaccion-chip">${e} ${n}</span>`).join('')}</div>`
+      : '';
+
+    const marcaFuego = m.autodestruye ? '<span class="marca-fuego">🔥</span>' : '';
 
     return `
-      <div class="msg-row ${mio ? 'mine' : ''}">
-        <div>
+      <div class="msg-row ${mio ? 'mine' : ''}" data-id="${m.id}" data-autodestruye="${m.autodestruye ? '1' : '0'}" data-mio="${mio ? '1' : '0'}">
+        <div class="bubble-wrap">
           ${esGrupo && !mio ? `<div class="msg-sender">${m.perfiles?.nombre || 'Usuario'}</div>` : ''}
-          <div class="bubble">${cuerpo}<div class="bubble-time">${hora}</div></div>
+          <div class="reaccion-picker">${EMOJIS_REACCION.map(e => `<span data-emoji="${e}" data-msg="${m.id}">${e}</span>`).join('')}</div>
+          ${mio ? `<div class="msg-borrar" data-borrar="${m.id}">✕</div>` : ''}
+          <div class="bubble">${marcaFuego}${cuerpo}<div class="bubble-time">${checks}${hora}</div></div>
+          ${reaccionesHtml}
         </div>
       </div>
     `;
   }).join('');
 
   cont.scrollTop = cont.scrollHeight;
+
+  cont.querySelectorAll('.reaccion-picker span').forEach(el => {
+    el.addEventListener('click', () => reaccionar(el.dataset.msg, el.dataset.emoji));
+  });
+  cont.querySelectorAll('[data-borrar]').forEach(el => {
+    el.addEventListener('click', () => borrarMensaje(el.dataset.borrar));
+  });
+
+  // Mensajes autodestruibles: si NO son míos y los estoy viendo, se
+  // borran solos unos segundos después de mostrarse.
+  cont.querySelectorAll('.msg-row').forEach(row => {
+    if (row.dataset.autodestruye === '1' && row.dataset.mio === '0') {
+      const id = row.dataset.id;
+      setTimeout(() => borrarMensaje(id, true), 5000);
+    }
+  });
 }
 
 function escapeHtml(text) {
@@ -382,8 +531,44 @@ async function enviarTexto() {
     conversacion_id: conversacionActivaId,
     usuario_id: usuarioActual.id,
     tipo: 'texto',
-    contenido: texto
+    contenido: texto,
+    autodestruye: autodestruyeActivo
   });
+
+  if (autodestruyeActivo) { autodestruyeActivo = false; document.getElementById('btn-fuego').classList.remove('activo'); }
+}
+
+function toggleFuego() {
+  autodestruyeActivo = !autodestruyeActivo;
+  document.getElementById('btn-fuego').classList.toggle('activo', autodestruyeActivo);
+}
+
+async function enviarUbicacion() {
+  if (!conversacionActivaId) return;
+  if (!navigator.geolocation) { alert('Tu navegador no soporta ubicación.'); return; }
+
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    await supabaseClient.from('mensajes').insert({
+      conversacion_id: conversacionActivaId,
+      usuario_id: usuarioActual.id,
+      tipo: 'ubicacion',
+      contenido: `${pos.coords.latitude},${pos.coords.longitude}`
+    });
+  }, () => alert('No se pudo obtener tu ubicación. Revisa el permiso de ubicación.'));
+}
+
+async function reaccionar(mensajeId, emoji) {
+  await supabaseClient.from('reacciones').upsert({
+    mensaje_id: mensajeId, usuario_id: usuarioActual.id, emoji
+  }, { onConflict: 'mensaje_id,usuario_id' });
+  await cargarMensajes(conversacionActivaId);
+}
+
+async function borrarMensaje(mensajeId, silencioso) {
+  if (!silencioso && !confirm('¿Borrar este mensaje?')) return;
+  await supabaseClient.from('mensajes').delete().eq('id', mensajeId);
+  const fila = document.querySelector(`.msg-row[data-id="${mensajeId}"]`);
+  if (fila) fila.remove();
 }
 
 async function enviarImagen(e) {
@@ -460,8 +645,21 @@ function suscribirseAConversaciones() {
       if (m.conversacion_id === conversacionActivaId) {
         await marcarLeido(conversacionActivaId);
         await cargarMensajes(conversacionActivaId);
+      } else if (m.usuario_id !== usuarioActual.id) {
+        notificar('Nuevo mensaje', m.tipo === 'texto' ? m.contenido : 'Te enviaron algo nuevo');
       }
       await cargarConversaciones();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'mensajes' }, (payload) => {
+      const fila = document.querySelector(`.msg-row[data-id="${payload.old.id}"]`);
+      if (fila) fila.remove();
+    })
+    .subscribe();
+
+  canalReacciones = supabaseClient
+    .channel('reacciones-onda')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'reacciones' }, async () => {
+      if (conversacionActivaId) await cargarMensajes(conversacionActivaId);
     })
     .subscribe();
 }
@@ -577,4 +775,86 @@ async function crearChatIndividual(otroId) {
 
   await cargarConversaciones();
   await abrirConversacion(nuevaId);
+}
+
+// ============================================================
+// OPCIONES DEL CHAT (renombrar, apodo, color, fondo, salir)
+// ============================================================
+let colorSeleccionado = null;
+let fondoSeleccionado = null;
+
+function abrirOpcionesChat() {
+  const conv = conversaciones.find(c => c.id === conversacionActivaId);
+  if (!conv) return;
+
+  const esGrupo = conv.tipo === 'grupo';
+  document.getElementById('row-renombrar').style.display = esGrupo ? 'flex' : 'none';
+  document.getElementById('btn-salir-grupo').style.display = esGrupo ? 'block' : 'none';
+  document.getElementById('opciones-nombre-grupo').value = conv.nombre || '';
+
+  const prefs = prefsChat.get(conv.id) || {};
+  document.getElementById('opciones-apodo').value = prefs.apodo || '';
+  colorSeleccionado = prefs.color_tema || null;
+  fondoSeleccionado = prefs.fondo || null;
+
+  document.querySelectorAll('#opciones-colores .color-swatch').forEach(el => {
+    el.classList.toggle('selected', el.dataset.color === colorSeleccionado);
+    el.onclick = () => {
+      colorSeleccionado = el.dataset.color;
+      document.querySelectorAll('#opciones-colores .color-swatch').forEach(s => s.classList.remove('selected'));
+      el.classList.add('selected');
+    };
+  });
+  document.querySelectorAll('#opciones-fondos .color-swatch').forEach(el => {
+    el.classList.toggle('selected', el.dataset.fondo === fondoSeleccionado);
+    el.onclick = () => {
+      fondoSeleccionado = el.dataset.fondo;
+      document.querySelectorAll('#opciones-fondos .color-swatch').forEach(s => s.classList.remove('selected'));
+      el.classList.add('selected');
+    };
+  });
+
+  document.getElementById('modal-opciones-bg').classList.add('show');
+}
+
+async function guardarOpcionesChat() {
+  const conv = conversaciones.find(c => c.id === conversacionActivaId);
+  if (!conv) return;
+
+  if (conv.tipo === 'grupo') {
+    const nuevoNombre = document.getElementById('opciones-nombre-grupo').value.trim();
+    if (nuevoNombre && nuevoNombre !== conv.nombre) {
+      await supabaseClient.from('conversaciones').update({ nombre: nuevoNombre }).eq('id', conv.id);
+    }
+  }
+
+  const apodo = document.getElementById('opciones-apodo').value.trim();
+  await supabaseClient.from('conversacion_prefs').upsert({
+    conversacion_id: conv.id,
+    usuario_id: usuarioActual.id,
+    apodo: apodo || null,
+    color_tema: colorSeleccionado,
+    fondo: fondoSeleccionado
+  }, { onConflict: 'conversacion_id,usuario_id' });
+
+  document.getElementById('modal-opciones-bg').classList.remove('show');
+  await cargarPrefsChats();
+  await cargarConversaciones();
+  await abrirConversacion(conv.id);
+}
+
+async function salirDelGrupo() {
+  const conv = conversaciones.find(c => c.id === conversacionActivaId);
+  if (!conv) return;
+  if (!confirm(`¿Salir del grupo "${nombreConversacion(conv)}"?`)) return;
+
+  await supabaseClient.from('participantes').delete()
+    .eq('conversacion_id', conv.id).eq('usuario_id', usuarioActual.id);
+
+  document.getElementById('modal-opciones-bg').classList.remove('show');
+  conversacionActivaId = null;
+  volverALista();
+  document.getElementById('chat-empty').style.display = 'flex';
+  document.getElementById('chat-activo').style.display = 'none';
+  await cargarConversaciones();
 }

@@ -16,6 +16,18 @@
   --font-mono:'IBM Plex Mono',monospace;
 }
 
+body.dark{
+  --bg:#15131C;
+  --bg-panel:#1E1B29;
+  --bg-sunken:#262233;
+  --line:#332E44;
+  --ink:#EFEDF5;
+  --ink-dim:#9A94B3;
+  --ink-faint:#615C79;
+  --coral-dim:#3A231C;
+  --indigo-dim:#241F3D;
+}
+
 *{box-sizing:border-box;margin:0;padding:0}
 body{
   background:var(--bg);color:var(--ink);font-family:var(--font-body);
@@ -154,3 +166,76 @@ input,textarea{font-family:inherit}
 .contact-pick:hover{background:var(--bg-sunken)}
 .contact-pick input{margin-left:auto}
 .modal-list{overflow-y:auto;flex:1;margin:10px 0}
+
+/* ============================================================
+   FUNCIONES NUEVAS: estados, avatar, reacciones, personalización
+   ============================================================ */
+
+/* ---------- Avatar con foto ---------- */
+.avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+
+/* ---------- Barra de estados (historias) ---------- */
+.estados-bar{display:flex;gap:14px;padding:14px 16px;border-bottom:1px solid var(--line);overflow-x:auto}
+.estado-item{display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;cursor:pointer;width:58px}
+.estado-avatar{width:52px;height:52px;border-radius:50%;border:2.5px solid var(--coral);padding:2px;display:flex;align-items:center;justify-content:center;position:relative}
+.estado-avatar.visto{border-color:var(--line)}
+.estado-avatar .avatar{width:100%;height:100%}
+.estado-plus{position:absolute;bottom:-2px;right:-2px;background:var(--coral);color:#fff;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;border:2px solid var(--bg-panel)}
+.estado-item span{font-size:0.68rem;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58px}
+
+/* ---------- Visor de estados ---------- */
+.estado-viewer{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center}
+.estado-viewer.show{display:flex}
+.estado-viewer-bar{position:absolute;top:12px;left:12px;right:12px;height:3px;background:rgba(255,255,255,0.3);border-radius:2px}
+.estado-viewer-bar-fill{height:100%;width:0;background:#fff;border-radius:2px;animation:estadoProgreso 5s linear forwards}
+@keyframes estadoProgreso{to{width:100%}}
+.estado-viewer-close{position:absolute;top:28px;right:16px;color:#fff;font-size:1.6rem;z-index:2}
+.estado-viewer-content{max-width:90vw;max-height:80vh;color:#fff;text-align:center;font-size:1.3rem;padding:20px}
+.estado-viewer-content img{max-width:90vw;max-height:75vh;border-radius:8px}
+.estado-viewer-nombre{position:absolute;top:24px;left:16px;color:#fff;font-weight:700}
+
+/* ---------- Doble check ---------- */
+.check-doble{font-family:var(--font-mono)}
+.check-doble.leido{color:#8FD8FF}
+
+/* ---------- Borrar mensaje ---------- */
+.bubble-wrap{position:relative}
+.msg-borrar{
+  position:absolute;top:-8px;background:var(--bg-panel);border:1px solid var(--line);color:var(--ink-faint);
+  width:22px;height:22px;border-radius:50%;font-size:0.7rem;display:none;align-items:center;justify-content:center;cursor:pointer;
+}
+.msg-row.mine .msg-borrar{left:-10px}
+.msg-row:not(.mine) .msg-borrar{display:none !important}
+.bubble-wrap:hover .msg-borrar{display:flex}
+
+/* ---------- Reacciones ---------- */
+.reacciones-lista{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
+.reaccion-chip{background:var(--bg-panel);border:1px solid var(--line);border-radius:12px;padding:1px 7px;font-size:0.76rem;display:flex;align-items:center;gap:3px}
+.reaccion-picker{
+  position:absolute;bottom:100%;background:var(--bg-panel);border:1px solid var(--line);border-radius:20px;
+  padding:5px 8px;display:none;gap:4px;box-shadow:0 4px 14px rgba(0,0,0,0.12);z-index:5;margin-bottom:4px;
+}
+.msg-row.mine .reaccion-picker{right:0}
+.bubble-wrap:hover .reaccion-picker{display:flex}
+.reaccion-picker span{cursor:pointer;font-size:1.1rem;transition:transform .1s}
+.reaccion-picker span:hover{transform:scale(1.3)}
+
+/* ---------- Ubicación ---------- */
+.bubble-ubicacion{display:flex;align-items:center;gap:8px;color:inherit}
+.bubble-ubicacion .icono{font-size:1.4rem}
+
+/* ---------- Autodestrucción ---------- */
+.btn-fuego{background:var(--bg-sunken);color:var(--ink-dim)}
+.btn-fuego.activo{background:var(--coral-dim);color:var(--coral)}
+.marca-fuego{font-size:0.75rem;opacity:0.7;margin-right:4px}
+
+/* ---------- Modal de opciones de chat / perfil ---------- */
+.opciones-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.opciones-row:last-child{border-bottom:none}
+.opciones-row label{font-size:0.88rem;color:var(--ink-dim)}
+.color-swatches{display:flex;gap:8px}
+.color-swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent}
+.color-swatch.selected{border-color:var(--ink)}
+.danger-link{color:#C43E1F;font-size:0.86rem;cursor:pointer;margin-top:6px;display:inline-block}
+.avatar-upload{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.avatar-upload .avatar{width:64px;height:64px;font-size:1.4rem}
