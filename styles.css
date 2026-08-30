@@ -37,7 +37,7 @@ input,textarea{font-family:inherit}
 .onda-mark span:nth-child(5){height:7px;animation-delay:.6s}
 @keyframes wave{0%,100%{transform:scaleY(0.5)}50%{transform:scaleY(1)}}
 
-.brand{font-family:var(--font-display);font-weight:600;font-size:1.3rem;display:flex;align-items:center;gap:10px}
+.brand{font-family:var(--font-display);font-weight:600;font-size:1.05rem;display:flex;align-items:center;gap:10px}
 
 /* ---------- Auth pages ---------- */
 .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto}
