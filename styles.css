@@ -97,12 +97,7 @@ button{font-family:inherit;cursor:pointer;border:none}
 
 /* ---------- App shell ---------- */
 .shell{display:grid;grid-template-columns:340px 1fr;height:var(--vh100)}
-@media (max-width:760px){
-  .shell{grid-template-columns:1fr}
-  .sidebar.chat-open{display:none}
-  .chat-pane{display:none}
-  .chat-pane.open{display:flex}
-}
+/* Ver el ajuste de mobile al final del archivo — así gana sobre las reglas base */
 
 .sidebar{background:var(--bg-panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .sidebar-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
@@ -278,3 +273,11 @@ button{font-family:inherit;cursor:pointer;border:none}
 .btn-chip{background:var(--bg-sunken);border:1px solid var(--line);color:var(--ink-dim);padding:7px 14px;border-radius:20px;font-size:0.8rem;font-family:inherit}
 
 footer{border-top:1px solid var(--line);padding:32px 0;color:var(--ink-faint);font-size:0.82rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+/* ---------- Ajuste móvil: solo mostrar un panel a la vez ---------- */
+@media (max-width:760px){
+  .shell{grid-template-columns:1fr;grid-template-rows:var(--vh100)}
+  .sidebar.chat-open{display:none}
+  .chat-pane{display:none}
+  .chat-pane.open{display:flex}
+}
