@@ -2,10 +2,10 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Chat Esteban — Chats</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Quicksand:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -59,7 +59,9 @@
 
       <div class="composer">
         <input type="file" id="input-imagen" accept="image/*">
+        <input type="file" id="input-video" accept="video/*">
         <button class="icon-btn" id="btn-adjuntar" title="Enviar imagen">📷</button>
+        <button class="icon-btn" id="btn-adjuntar-video" title="Enviar video">🎬</button>
         <button class="icon-btn" id="btn-ubicacion" title="Compartir ubicación">📍</button>
         <input type="text" id="texto-mensaje" placeholder="Escribe un mensaje...">
         <button class="icon-btn btn-fuego" id="btn-fuego" title="Mensaje que se autodestruye">🔥</button>
@@ -145,27 +147,40 @@
     <div class="opciones-row">
       <label>Color del chat</label>
       <div class="color-swatches" id="opciones-colores">
-        <div class="color-swatch" data-color="#FF6B4A" style="background:#FF6B4A"></div>
-        <div class="color-swatch" data-color="#4C3F91" style="background:#4C3F91"></div>
-        <div class="color-swatch" data-color="#2FBF71" style="background:#2FBF71"></div>
-        <div class="color-swatch" data-color="#E0A62B" style="background:#E0A62B"></div>
-        <div class="color-swatch" data-color="#C43E1F" style="background:#C43E1F"></div>
+        <div class="color-swatch" data-color="#FF7EB6" style="background:#FF7EB6"></div>
+        <div class="color-swatch" data-color="#9B6FC9" style="background:#9B6FC9"></div>
+        <div class="color-swatch" data-color="#5FDBA6" style="background:#5FDBA6"></div>
+        <div class="color-swatch" data-color="#FFB84D" style="background:#FFB84D"></div>
+        <div class="color-swatch" data-color="#E8579A" style="background:#E8579A"></div>
       </div>
     </div>
-    <div class="opciones-row">
+    <div class="opciones-row" style="flex-direction:column;align-items:stretch">
       <label>Fondo de la conversación</label>
       <div class="color-swatches" id="opciones-fondos">
-        <div class="color-swatch" data-fondo="#EDE8E0" style="background:#EDE8E0;border:1px solid var(--line)"></div>
-        <div class="color-swatch" data-fondo="#FFE8E0" style="background:#FFE8E0"></div>
-        <div class="color-swatch" data-fondo="#E4E1F7" style="background:#E4E1F7"></div>
-        <div class="color-swatch" data-fondo="#DFF3E6" style="background:#DFF3E6"></div>
-        <div class="color-swatch" data-fondo="#1E1B29" style="background:#1E1B29"></div>
+        <div class="color-swatch" data-fondo="#FFE6F1" style="background:#FFE6F1;border:1px solid var(--line)"></div>
+        <div class="color-swatch" data-fondo="#FFD3E7" style="background:#FFD3E7"></div>
+        <div class="color-swatch" data-fondo="#F3E9FB" style="background:#F3E9FB"></div>
+        <div class="color-swatch" data-fondo="#E1F7EE" style="background:#E1F7EE"></div>
+        <div class="color-swatch" data-fondo="#2E1A2B" style="background:#2E1A2B"></div>
+      </div>
+      <div class="fondo-upload-row">
+        <div class="fondo-preview" id="fondo-preview"></div>
+        <input type="file" id="input-fondo" accept="image/*" style="display:none">
+        <button class="btn-chip" id="btn-subir-fondo" type="button">Usar una foto</button>
+        <button class="btn-chip" id="btn-quitar-fondo" type="button">Quitar</button>
       </div>
     </div>
     <button class="btn btn-primary" id="btn-guardar-opciones" style="margin-top:10px">Guardar</button>
     <p class="danger-link" id="btn-salir-grupo" style="display:none;text-align:center;width:100%">Salir del grupo</p>
     <p class="danger-link" id="btn-cerrar-modal-opciones" style="text-align:center;width:100%">Cerrar</p>
   </div>
+</div>
+
+<!-- ===== VISOR DE IMÁGENES (zoom) ===== -->
+<div class="visor-imagen-bg" id="visor-imagen-bg">
+  <div class="visor-imagen-cerrar" id="visor-imagen-cerrar">✕</div>
+  <img id="visor-imagen-img" src="" alt="">
+  <div class="visor-imagen-hint">Toca la foto para hacer zoom</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>

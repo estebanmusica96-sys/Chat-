@@ -21,6 +21,28 @@ const EMOJIS_REACCION = ['👍','❤️','😂','😮','😢','🙏'];
 
 const BUCKET = 'media';
 
+// ---------- Comprimir imágenes antes de subirlas (más rápido de subir y cargar) ----------
+function comprimirImagen(file, maxAncho = 1280, calidad = 0.75) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) { resolve(file); return; }
+    const img = new Image();
+    const lector = new FileReader();
+    lector.onload = (e) => { img.src = e.target.result; };
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxAncho) { height = height * (maxAncho / width); width = maxAncho; }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        resolve(blob ? new File([blob], file.name, { type: 'image/jpeg' }) : file);
+      }, 'image/jpeg', calidad);
+    };
+    img.onerror = () => resolve(file);
+    lector.readAsDataURL(file);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const { data: { user } } = await supabaseClient.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
@@ -51,6 +73,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('texto-mensaje').addEventListener('keydown', (e) => { if (e.key === 'Enter') enviarTexto(); });
   document.getElementById('btn-adjuntar').addEventListener('click', () => document.getElementById('input-imagen').click());
   document.getElementById('input-imagen').addEventListener('change', enviarImagen);
+  document.getElementById('btn-adjuntar-video').addEventListener('click', () => document.getElementById('input-video').click());
+  document.getElementById('input-video').addEventListener('change', enviarVideo);
+  document.getElementById('visor-imagen-cerrar').addEventListener('click', cerrarVisorImagen);
+  document.getElementById('visor-imagen-bg').addEventListener('click', (e) => { if (e.target.id === 'visor-imagen-bg') cerrarVisorImagen(); });
+  document.getElementById('visor-imagen-img').addEventListener('click', (e) => e.target.classList.toggle('zoom'));
   document.getElementById('btn-audio').addEventListener('click', toggleGrabacion);
   document.getElementById('buscar-conv').addEventListener('input', filtrarListaConv);
 
@@ -69,6 +96,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('estado-viewer-close').addEventListener('click', () => document.getElementById('estado-viewer').classList.remove('show'));
 
   document.getElementById('btn-opciones-chat').addEventListener('click', abrirOpcionesChat);
+  document.getElementById('btn-subir-fondo').addEventListener('click', () => document.getElementById('input-fondo').click());
+  document.getElementById('input-fondo').addEventListener('change', subirFondoPersonalizado);
+  document.getElementById('btn-quitar-fondo').addEventListener('click', () => {
+    fondoSeleccionado = null;
+    document.getElementById('fondo-preview').style.backgroundImage = '';
+    document.querySelectorAll('#opciones-fondos .color-swatch').forEach(s => s.classList.remove('selected'));
+  });
   document.getElementById('modal-opciones-bg').addEventListener('click', (e) => { if (e.target.id === 'modal-opciones-bg') e.target.classList.remove('show'); });
   document.getElementById('btn-cerrar-modal-opciones').addEventListener('click', () => document.getElementById('modal-opciones-bg').classList.remove('show'));
   document.getElementById('btn-guardar-opciones').addEventListener('click', guardarOpcionesChat);
@@ -140,8 +174,9 @@ async function guardarPerfil() {
   const updates = { nombre };
 
   if (avatarFileSeleccionado) {
-    const ruta = `avatars/${usuarioActual.id}_${Date.now()}_${avatarFileSeleccionado.name}`;
-    const { error: errSubida } = await supabaseClient.storage.from(BUCKET).upload(ruta, avatarFileSeleccionado);
+    const comprimida = await comprimirImagen(avatarFileSeleccionado, 500, 0.8);
+    const ruta = `avatars/${usuarioActual.id}_${Date.now()}.jpg`;
+    const { error: errSubida } = await supabaseClient.storage.from(BUCKET).upload(ruta, comprimida);
     if (!errSubida) {
       const { data: urlData } = supabaseClient.storage.from(BUCKET).getPublicUrl(ruta);
       updates.avatar_url = urlData.publicUrl;
@@ -179,47 +214,33 @@ async function cargarConversaciones() {
     return;
   }
 
-  conversaciones = [];
-  for (const p of partis) {
+  conversaciones = await Promise.all(partis.map(async (p) => {
     const conv = p.conversaciones;
-    const { data: otrosPartis } = await supabaseClient
-      .from('participantes')
-      .select('usuario_id')
-      .eq('conversacion_id', conv.id)
-      .neq('usuario_id', usuarioActual.id);
 
-    const otrosIds = (otrosPartis || []).map(o => o.usuario_id);
+    const [otrosPartisRes, ultimoMsgRes, noLeidosRes] = await Promise.all([
+      supabaseClient.from('participantes').select('usuario_id')
+        .eq('conversacion_id', conv.id).neq('usuario_id', usuarioActual.id),
+      supabaseClient.from('mensajes').select('*')
+        .eq('conversacion_id', conv.id).order('creado_en', { ascending: false }).limit(1).maybeSingle(),
+      supabaseClient.from('mensajes').select('id', { count: 'exact', head: true })
+        .eq('conversacion_id', conv.id).gt('creado_en', p.leido_hasta || '1970-01-01').neq('usuario_id', usuarioActual.id)
+    ]);
+
+    const otrosIds = (otrosPartisRes.data || []).map(o => o.usuario_id);
     let otrosPerfiles = [];
     if (otrosIds.length > 0) {
       const { data } = await supabaseClient
-        .from('perfiles')
-        .select('id, nombre, last_seen, avatar_url')
-        .in('id', otrosIds);
+        .from('perfiles').select('id, nombre, last_seen, avatar_url').in('id', otrosIds);
       otrosPerfiles = data || [];
     }
 
-    const { data: ultimoMsg } = await supabaseClient
-      .from('mensajes')
-      .select('*')
-      .eq('conversacion_id', conv.id)
-      .order('creado_en', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const { count: noLeidos } = await supabaseClient
-      .from('mensajes')
-      .select('id', { count: 'exact', head: true })
-      .eq('conversacion_id', conv.id)
-      .gt('creado_en', p.leido_hasta || '1970-01-01')
-      .neq('usuario_id', usuarioActual.id);
-
-    conversaciones.push({
+    return {
       ...conv,
       otrosParticipantes: otrosPerfiles,
-      ultimoMsg,
-      noLeidos: noLeidos || 0
-    });
-  }
+      ultimoMsg: ultimoMsgRes.data,
+      noLeidos: noLeidosRes.count || 0
+    };
+  }));
 
   conversaciones.sort((a, b) => {
     const ta = a.ultimoMsg?.creado_en || a.creado_en;
@@ -258,7 +279,7 @@ function dibujarListaConv() {
     const esGrupo = conv.tipo === 'grupo';
     const enLinea = !esGrupo && esReciente(conv.otrosParticipantes[0]?.last_seen);
     const preview = conv.ultimoMsg
-      ? (conv.ultimoMsg.tipo === 'texto' ? conv.ultimoMsg.contenido : conv.ultimoMsg.tipo === 'imagen' ? '📷 Foto' : '🎤 Audio')
+      ? (conv.ultimoMsg.tipo === 'texto' ? conv.ultimoMsg.contenido : conv.ultimoMsg.tipo === 'imagen' ? '📷 Foto' : conv.ultimoMsg.tipo === 'video' ? '🎬 Video' : conv.ultimoMsg.tipo === 'ubicacion' ? '📍 Ubicación' : '🎤 Audio')
       : 'Sin mensajes todavía';
     const hora = conv.ultimoMsg ? new Date(conv.ultimoMsg.creado_en).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -326,7 +347,16 @@ async function abrirConversacion(id) {
   const prefs = prefsChat.get(id) || {};
   const chatPane = document.getElementById('chat-pane');
   chatPane.style.setProperty('--coral', prefs.color_tema || '');
-  document.getElementById('messages').style.background = prefs.fondo || '';
+
+  const messagesEl = document.getElementById('messages');
+  if (prefs.fondo && prefs.fondo.startsWith('http')) {
+    messagesEl.style.background = `url(${prefs.fondo})`;
+    messagesEl.style.backgroundSize = 'cover';
+    messagesEl.style.backgroundPosition = 'center';
+  } else {
+    messagesEl.style.backgroundImage = '';
+    messagesEl.style.background = prefs.fondo || '';
+  }
 }
 
 function volverALista() {
@@ -420,8 +450,9 @@ async function publicarEstado() {
   const file = document.getElementById('input-estado-imagen').files[0];
 
   if (file) {
-    const ruta = `estados/${usuarioActual.id}_${Date.now()}_${file.name}`;
-    const { error } = await supabaseClient.storage.from(BUCKET).upload(ruta, file);
+    const comprimida = await comprimirImagen(file);
+    const ruta = `estados/${usuarioActual.id}_${Date.now()}.jpg`;
+    const { error } = await supabaseClient.storage.from(BUCKET).upload(ruta, comprimida);
     if (error) { alert('No se pudo subir la imagen.'); return; }
     const { data: urlData } = supabaseClient.storage.from(BUCKET).getPublicUrl(ruta);
     await supabaseClient.from('historias').insert({ usuario_id: usuarioActual.id, tipo: 'imagen', contenido: urlData.publicUrl });
@@ -465,49 +496,84 @@ function verEstados(historias) {
 // ============================================================
 // MENSAJES
 // ============================================================
+const LIMITE_MENSAJES = 40;
+let mensajesCargados = [];
+let hayMasMensajes = false;
+let otroLeidoHastaActivo = null;
+
+async function completarNombres(mensajes) {
+  const idsUnicos = [...new Set(mensajes.map(m => m.usuario_id))];
+  if (idsUnicos.length === 0) return;
+  const { data: perfilesEnviaron } = await supabaseClient
+    .from('perfiles').select('id, nombre').in('id', idsUnicos);
+  const nombresPorId = {};
+  (perfilesEnviaron || []).forEach(p => { nombresPorId[p.id] = p.nombre; });
+  mensajes.forEach(m => { m.nombreRemitente = nombresPorId[m.usuario_id] || 'Usuario'; });
+}
+
 async function cargarMensajes(convId) {
   const { data } = await supabaseClient
     .from('mensajes')
     .select('*, reacciones(usuario_id, emoji)')
     .eq('conversacion_id', convId)
-    .order('creado_en', { ascending: true })
-    .limit(200);
+    .order('creado_en', { ascending: false })
+    .limit(LIMITE_MENSAJES);
 
-  const mensajes = data || [];
+  mensajesCargados = (data || []).reverse();
+  hayMasMensajes = mensajesCargados.length === LIMITE_MENSAJES;
+  await completarNombres(mensajesCargados);
 
-  // Nombres de quien envió cada mensaje (para mostrarlos en grupos)
-  const idsUnicos = [...new Set(mensajes.map(m => m.usuario_id))];
-  let nombresPorId = {};
-  if (idsUnicos.length > 0) {
-    const { data: perfilesEnviaron } = await supabaseClient
-      .from('perfiles').select('id, nombre').in('id', idsUnicos);
-    (perfilesEnviaron || []).forEach(p => { nombresPorId[p.id] = p.nombre; });
-  }
-  mensajes.forEach(m => { m.nombreRemitente = nombresPorId[m.usuario_id] || 'Usuario'; });
-
-  let otroLeidoHasta = null;
+  otroLeidoHastaActivo = null;
   const conv = conversaciones.find(c => c.id === convId);
   if (conv && conv.tipo === 'individual') {
     const { data: p } = await supabaseClient
       .from('participantes').select('leido_hasta')
       .eq('conversacion_id', convId).neq('usuario_id', usuarioActual.id).maybeSingle();
-    otroLeidoHasta = p?.leido_hasta || null;
+    otroLeidoHastaActivo = p?.leido_hasta || null;
   }
 
-  dibujarMensajes(mensajes, otroLeidoHasta);
+  dibujarMensajes(mensajesCargados, otroLeidoHastaActivo, true);
 }
 
-function dibujarMensajes(mensajes, otroLeidoHasta) {
+async function cargarMensajesAnteriores() {
+  if (!hayMasMensajes || mensajesCargados.length === 0 || !conversacionActivaId) return;
+  const cursor = mensajesCargados[0].creado_en;
+
+  const { data } = await supabaseClient
+    .from('mensajes')
+    .select('*, reacciones(usuario_id, emoji)')
+    .eq('conversacion_id', conversacionActivaId)
+    .lt('creado_en', cursor)
+    .order('creado_en', { ascending: false })
+    .limit(LIMITE_MENSAJES);
+
+  const anteriores = (data || []).reverse();
+  hayMasMensajes = anteriores.length === LIMITE_MENSAJES;
+  await completarNombres(anteriores);
+  mensajesCargados = [...anteriores, ...mensajesCargados];
+
+  const cont = document.getElementById('messages');
+  const alturaPrevia = cont.scrollHeight;
+  dibujarMensajes(mensajesCargados, otroLeidoHastaActivo, false);
+  cont.scrollTop = cont.scrollHeight - alturaPrevia;
+}
+
+function dibujarMensajes(mensajes, otroLeidoHasta, irAlFinal) {
   const cont = document.getElementById('messages');
   const conv = conversaciones.find(c => c.id === conversacionActivaId);
   const esGrupo = conv?.tipo === 'grupo';
 
-  cont.innerHTML = mensajes.map(m => {
+  const botonAnteriores = hayMasMensajes
+    ? `<div style="text-align:center;padding:8px 0"><button id="btn-mensajes-anteriores" style="background:var(--bg-panel);border:1px solid var(--line);color:var(--ink-dim);padding:7px 16px;border-radius:20px;font-size:0.8rem">Cargar mensajes anteriores</button></div>`
+    : '';
+
+  cont.innerHTML = botonAnteriores + mensajes.map(m => {
     const mio = m.usuario_id === usuarioActual.id;
     const hora = new Date(m.creado_en).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
     let cuerpo = '';
     if (m.tipo === 'texto') cuerpo = `<div>${escapeHtml(m.contenido)}</div>`;
-    else if (m.tipo === 'imagen') cuerpo = `<img src="${m.contenido}" alt="imagen">`;
+    else if (m.tipo === 'imagen') cuerpo = `<img src="${m.contenido}" alt="imagen" data-zoom="${m.contenido}">`;
+    else if (m.tipo === 'video') cuerpo = `<video src="${m.contenido}" controls></video>`;
     else if (m.tipo === 'audio') cuerpo = `<audio controls src="${m.contenido}"></audio>`;
     else if (m.tipo === 'ubicacion') {
       const [lat, lng] = m.contenido.split(',');
@@ -541,8 +607,14 @@ function dibujarMensajes(mensajes, otroLeidoHasta) {
     `;
   }).join('');
 
-  cont.scrollTop = cont.scrollHeight;
+  if (irAlFinal) cont.scrollTop = cont.scrollHeight;
 
+  const btnAnteriores = document.getElementById('btn-mensajes-anteriores');
+  if (btnAnteriores) btnAnteriores.addEventListener('click', cargarMensajesAnteriores);
+
+  cont.querySelectorAll('[data-zoom]').forEach(el => {
+    el.addEventListener('click', () => abrirVisorImagen(el.dataset.zoom));
+  });
   cont.querySelectorAll('.reaccion-picker span').forEach(el => {
     el.addEventListener('click', () => reaccionar(el.dataset.msg, el.dataset.emoji));
   });
@@ -620,8 +692,9 @@ async function enviarImagen(e) {
   const file = e.target.files[0];
   if (!file || !conversacionActivaId) return;
 
-  const ruta = `${conversacionActivaId}/${Date.now()}_${file.name}`;
-  const { error: errSubida } = await supabaseClient.storage.from(BUCKET).upload(ruta, file);
+  const comprimida = await comprimirImagen(file);
+  const ruta = `${conversacionActivaId}/${Date.now()}.jpg`;
+  const { error: errSubida } = await supabaseClient.storage.from(BUCKET).upload(ruta, comprimida);
   if (errSubida) { alert('No se pudo subir la imagen.'); return; }
 
   const { data: urlData } = supabaseClient.storage.from(BUCKET).getPublicUrl(ruta);
@@ -634,6 +707,50 @@ async function enviarImagen(e) {
   });
 
   e.target.value = '';
+}
+
+async function enviarVideo(e) {
+  const file = e.target.files[0];
+  if (!file || !conversacionActivaId) return;
+
+  if (file.size > 40 * 1024 * 1024) {
+    alert('El video pesa más de 40MB. Elige uno más corto o de menor calidad.');
+    e.target.value = '';
+    return;
+  }
+
+  const btn = document.getElementById('btn-adjuntar-video');
+  const textoOriginal = btn.textContent;
+  btn.textContent = '⏳';
+
+  const extension = file.name.split('.').pop() || 'mp4';
+  const ruta = `${conversacionActivaId}/${Date.now()}.${extension}`;
+  const { error: errSubida } = await supabaseClient.storage.from(BUCKET).upload(ruta, file);
+  btn.textContent = textoOriginal;
+  if (errSubida) { alert('No se pudo subir el video.'); return; }
+
+  const { data: urlData } = supabaseClient.storage.from(BUCKET).getPublicUrl(ruta);
+
+  await supabaseClient.from('mensajes').insert({
+    conversacion_id: conversacionActivaId,
+    usuario_id: usuarioActual.id,
+    tipo: 'video',
+    contenido: urlData.publicUrl
+  });
+
+  e.target.value = '';
+}
+
+// ---------- Visor de imágenes con zoom ----------
+function abrirVisorImagen(url) {
+  const img = document.getElementById('visor-imagen-img');
+  img.src = url;
+  img.classList.remove('zoom');
+  document.getElementById('visor-imagen-bg').classList.add('show');
+}
+
+function cerrarVisorImagen() {
+  document.getElementById('visor-imagen-bg').classList.remove('show');
 }
 
 async function toggleGrabacion() {
@@ -854,12 +971,36 @@ function abrirOpcionesChat() {
     el.classList.toggle('selected', el.dataset.fondo === fondoSeleccionado);
     el.onclick = () => {
       fondoSeleccionado = el.dataset.fondo;
+      document.getElementById('fondo-preview').style.backgroundImage = '';
       document.querySelectorAll('#opciones-fondos .color-swatch').forEach(s => s.classList.remove('selected'));
       el.classList.add('selected');
     };
   });
 
+  const previewFondo = document.getElementById('fondo-preview');
+  if (fondoSeleccionado && fondoSeleccionado.startsWith('http')) {
+    previewFondo.style.backgroundImage = `url(${fondoSeleccionado})`;
+  } else {
+    previewFondo.style.backgroundImage = '';
+  }
+
   document.getElementById('modal-opciones-bg').classList.add('show');
+}
+
+async function subirFondoPersonalizado(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const comprimida = await comprimirImagen(file, 1000, 0.7);
+  const ruta = `fondos/${usuarioActual.id}_${Date.now()}.jpg`;
+  const { error } = await supabaseClient.storage.from(BUCKET).upload(ruta, comprimida);
+  if (error) { alert('No se pudo subir la foto.'); return; }
+
+  const { data: urlData } = supabaseClient.storage.from(BUCKET).getPublicUrl(ruta);
+  fondoSeleccionado = urlData.publicUrl;
+  document.getElementById('fondo-preview').style.backgroundImage = `url(${fondoSeleccionado})`;
+  document.querySelectorAll('#opciones-fondos .color-swatch').forEach(s => s.classList.remove('selected'));
+  e.target.value = '';
 }
 
 async function guardarOpcionesChat() {
