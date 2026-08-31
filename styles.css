@@ -239,3 +239,17 @@ input,textarea{font-family:inherit}
 .danger-link{color:#C43E1F;font-size:0.86rem;cursor:pointer;margin-top:6px;display:inline-block}
 .avatar-upload{display:flex;align-items:center;gap:14px;margin-bottom:16px}
 .avatar-upload .avatar{width:64px;height:64px;font-size:1.4rem}
+
+body {
+  background-image: url('fondo-rosas.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
