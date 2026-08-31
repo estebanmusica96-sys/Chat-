@@ -253,13 +253,4 @@ body {
   align-items: center;
 }
 
-/* Personalización y efecto elegante para la caja de login */
-main, form, .login-card, .card {
-  background: rgba(255, 255, 255, 0.90) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 25px 50px -12px rgba(100, 10, 30, 0.45);
-  border-radius: 24px !important;
-  padding: 30px;
-}
+
